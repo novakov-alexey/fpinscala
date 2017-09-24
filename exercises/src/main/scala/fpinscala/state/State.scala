@@ -129,9 +129,11 @@ object RNG {
   }
 }
 
+import State._
+
 case class State[S, +A](run: S => (A, S)) {
   def map[B](f: A => B): State[S, B] =
-    State(s => (f(run), s))
+    flatMap(a => unit(f(a)))
 
   def map2[B, C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
     State(s => {
@@ -157,6 +159,9 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
   type Rand[A] = State[RNG, A]
+
+  def unit[S, A](a: A): State[S, A] =
+    State(s => (a, s))
 
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
 
