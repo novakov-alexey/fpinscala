@@ -100,6 +100,12 @@ object Par {
     val fbs: List[Par[B]] = ps.map(asyncF(f))
     sequence2(fbs)
   }
+
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = {
+    val pars: List[Par.Par[List[A]]] = as.map(asyncF((l: A) => if(f(l)) List[A](l) else List()))
+    map(sequence2(pars))(_.flatten)
+  }
+
   def asyncF[A,B](f: A => B): A => Par[B] =
     a => lazyUnit(f(a))
 
@@ -116,6 +122,50 @@ object Par {
     es =>
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
+
+  def choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = {
+    es => {
+      val i = run(es)(n).get()
+      run(es)(choices(i))
+    }
+  }
+
+  def choiceN2[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = {
+    chooser(n)(choices)
+  }
+
+  def choice2[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] = {
+    choiceN(map(cond)(b => if (b) 0 else 1))(List(t, f))
+  }
+
+  def choice3[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] = {
+    chooser(map(cond)(b => if (b) 0 else 1))(List(t, f))
+  }
+
+  def chooser[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
+    es => {
+      val k = run(es)(p).get
+      run(es)(f(k))
+    }
+
+  def flatMap[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
+    es => {
+      val k = run(es)(p).get
+      run(es)(f(k))
+    }
+
+  def flatMapViaJoin[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
+    join(map(p)(f))
+
+  def join[A](p: Par[Par[A]]): Par[A] = {
+    es =>
+      val par: Par[A] = run(es)(p).get()
+      run(es)(par)
+  }
+
+  def joinViaFlatMap[A](p: Par[Par[A]]): Par[A] =
+    flatMap(p)(a => a)
+
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
