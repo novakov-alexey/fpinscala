@@ -114,6 +114,9 @@ trait Stream[+A] {
     }
   }
 
+  def zip[B](s2: Stream[B]): Stream[(A,B)] =
+    zipWith(s2)((_,_))
+
   def tails: Stream[Stream[A]] = {
     unfold(this) {
       case Empty => None
@@ -144,9 +147,8 @@ trait Stream[+A] {
     foldRight(e)((h, t) => cons[AA](h, t))
   }
 
-  def map[B >: A](f: A => B): Stream[B] = {
-    foldRight(empty[B])((h, t) => cons(f(h), t))
-  }
+  def map[B](f: A => B): Stream[B] =
+    foldRight(empty[B])((h,t) => cons(f(h), t))
 
   def flatMap[B >: A](f: A => Stream[B]): Stream[B] = {
     foldRight(empty[B])((h, t) => f(h).append(t))
