@@ -1,6 +1,7 @@
 package fpinscala.testing
 
 import fpinscala.laziness.Stream
+import fpinscala.state.RNG.Simple
 import fpinscala.state._
 import fpinscala.testing.Prop.{FailedCase, MaxSize, SuccessCount, TestCases}
 
@@ -156,9 +157,29 @@ case class SGen[A](forSize: Int => Gen[A]) {
     SGen(n => g.listOfN(n max 1))
 }
 
-object SortedTest {
+object SortedTest extends App {
   Prop.forAll(Gen.listOf(Gen.choose(-10, 10))) { l =>
     val sorted = l.sorted
     !l.zip(sorted).exists { case (a, b) => a != b }
   }
+
+  val isEven = (i: Int) => i % 2 == 0
+  val takeWhileProp =
+    Prop.forAll(Gen.listOf(Gen.choose(-10, 10)))(l => l.takeWhile(isEven).forall(isEven))
+
+  val result = (
+    Prop.forAll(Gen.listOf(Gen.choose(-10, 10)))(l => {
+      val half = l.length / 2
+      val prefix = l.take(half)
+      val suffix = l.drop(half)
+      !(suffix.startsWith(prefix) && prefix.nonEmpty) || l.isEmpty
+    }).tag("take") &&
+      Prop.forAll(Gen.listOf(Gen.choose(-10, 10)))(l => {
+        val filtered = l.filter(isEven)
+        filtered.forall(isEven)
+      }).tag("filter")
+    )
+    .run(1000, 100, Simple(234L))
+
+  println(result)
 }
