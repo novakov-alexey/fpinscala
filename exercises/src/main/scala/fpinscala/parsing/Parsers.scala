@@ -29,16 +29,17 @@ trait Parsers[Parser[+ _]] {
 
   def ab: Parser[(Int, Int)]
 
-  def ** [A, B](p: Parser[A], p2: Parser[B]): Parser[(A, B)]
+  def **[A, B](p: Parser[A], p2: Parser[B]): Parser[(A, B)] = product(p, p2)
 
-  def product[A, B](p: Parser[A], p2: Parser[B]): Parser[(A, B)]
+  def product[A, B](p: Parser[A], p2: Parser[B]): Parser[(A, B)] =
+    flatMap(p)(a => flatMap(p2)(b => succeed(a -> b)))
 
   def map2[A, B, C](p: Parser[A], p2: Parser[B])(f: (A, B) => C): Parser[C] =
     product(p, p2).map { case (a, b) => f(a, b) }
 
-  def map[A, B](p: Parser[A])(f: A => B): Parser[B] = ???
+  def map[A, B](p: Parser[A])(f: A => B): Parser[B] = flatMap(p)(f.andThen(succeed))
 
-  def flatMap[A,B](p: Parser[A])(f: A => Parser[B]): Parser[B] = ???
+  def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B] = ???
 
   def slice[A](p: Parser[A]): Parser[String]
 
@@ -46,7 +47,7 @@ trait Parsers[Parser[+ _]] {
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(List())
-    else map2(p, listOfN(n-1, p))(_ :: _)
+    else map2(p, listOfN(n - 1, p))(_ :: _)
 
 
   def toLazy[A](p: => Parser[A]): Parser[A] = {
@@ -70,7 +71,7 @@ trait Parsers[Parser[+ _]] {
 
     def slice: Parser[String] = self.slice(p)
 
-    def ** [B](p2: Parser[B]): Parser[(A, B)] =
+    def **[B](p2: Parser[B]): Parser[(A, B)] =
       self.product(p, p2)
   }
 
@@ -91,6 +92,7 @@ trait Parsers[Parser[+ _]] {
     def mapLaw[A](p: Parser[A])(in: Gen[String]): Prop =
       equal(p, p.map(a => a))(in)
   }
+
 }
 
 case class Location(input: String, offset: Int = 0) {
