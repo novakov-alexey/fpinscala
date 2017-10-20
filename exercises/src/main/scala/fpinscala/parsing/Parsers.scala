@@ -35,7 +35,7 @@ trait Parsers[Parser[+ _]] {
     flatMap(p)(a => flatMap(p2)(b => succeed(a -> b)))
 
   def map2[A, B, C](p: Parser[A], p2: Parser[B])(f: (A, B) => C): Parser[C] =
-    product(p, p2).map { case (a, b) => f(a, b) }
+    flatMap(p)(a => map(p2)(b => f(a, b)))
 
   def map[A, B](p: Parser[A])(f: A => B): Parser[B] = flatMap(p)(f.andThen(succeed))
 
