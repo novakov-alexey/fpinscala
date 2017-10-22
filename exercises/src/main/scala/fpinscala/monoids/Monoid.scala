@@ -1,7 +1,9 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
-import fpinscala.parallelism.Nonblocking.Par.toParOps // infix syntax for `Par.map`, `Par.flatMap`, etc
+import fpinscala.parallelism.Nonblocking.Par.toParOps
+import fpinscala.testing.Prop.forAll
+
 import language.higherKinds
 
 trait Monoid[A] {
@@ -21,28 +23,61 @@ object Monoid {
     val zero = Nil
   }
 
-  val intAddition: Monoid[Int] = ???
+  val intAddition: Monoid[Int] = new Monoid[Int] {
+    override def op(a1: Int, a2: Int): Int = a1 + a2
 
-  val intMultiplication: Monoid[Int] = ???
+    override def zero: Int = 0
+  }
 
-  val booleanOr: Monoid[Boolean] = ???
+  val intMultiplication: Monoid[Int] = new Monoid[Int] {
+    override def op(a1: Int, a2: Int): Int = a1 * a2
 
-  val booleanAnd: Monoid[Boolean] = ???
+    override def zero: Int = 1
+  }
 
-  def optionMonoid[A]: Monoid[Option[A]] = ???
+  val booleanOr: Monoid[Boolean] = new Monoid[Boolean] {
+    override def op(a1: Boolean, a2: Boolean): Boolean = a1 || a2
 
-  def endoMonoid[A]: Monoid[A => A] = ???
+    override def zero: Boolean = false
+  }
 
-  // TODO: Placeholder for `Prop`. Remove once you have implemented the `Prop`
-  // data type from Part 2.
-  trait Prop {}
+  val booleanAnd: Monoid[Boolean] = new Monoid[Boolean] {
+    override def op(a1: Boolean, a2: Boolean): Boolean = a1 && a2
 
-  // TODO: Placeholder for `Gen`. Remove once you have implemented the `Gen`
-  // data type from Part 2.
+    override def zero: Boolean = true
+  }
+
+  def optionMonoid[A]: Monoid[Option[A]] = new Monoid[Option[A]] {
+    override def op(a1: Option[A], a2: Option[A]): Option[A] = a1.orElse(a2)
+
+    override def zero: Option[A] = None
+  }
+
+  def endoMonoid[A]: Monoid[A => A] = new Monoid[(A) => A] {
+    override def op(a1: (A) => A, a2: (A) => A): (A) => A = a1.compose(a2)
+
+    override def zero: (A) => A = a => a
+  }
 
   import fpinscala.testing._
-  import Prop._
-  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = ???
+
+  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop =
+    forAll(Gen.unit(Monoid.intAddition))(m => {
+      m.op(2, 3) == m.op(3, 2)
+    })
+
+  def monoidLaws2[A](m: Monoid[A], gen: Gen[A]): Prop =
+  // Associativity
+    forAll(for {
+      x <- gen
+      y <- gen
+      z <- gen
+    } yield (x, y, z)){ p: (A, A, A) =>
+      m.op(p._1, m.op(p._2, p._3)) == m.op(m.op(p._1, p._2), p._3)
+    } &&
+      // Identity
+      forAll(gen)((a: A) =>
+        m.op(a, m.zero) == a && m.op(m.zero, a) == a)
 
   def trimMonoid(s: String): Monoid[String] = ???
 
