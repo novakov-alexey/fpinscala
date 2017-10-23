@@ -1,13 +1,13 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
-import fpinscala.parallelism.Nonblocking.Par.toParOps
 import fpinscala.testing.Prop.forAll
 
-import language.higherKinds
+import scala.language.higherKinds
 
 trait Monoid[A] {
   def op(a1: A, a2: A): A
+
   def zero: A
 }
 
@@ -15,11 +15,13 @@ object Monoid {
 
   val stringMonoid = new Monoid[String] {
     def op(a1: String, a2: String) = a1 + a2
+
     val zero = ""
   }
 
   def listMonoid[A] = new Monoid[List[A]] {
     def op(a1: List[A], a2: List[A]) = a1 ++ a2
+
     val zero = Nil
   }
 
@@ -61,19 +63,14 @@ object Monoid {
 
   import fpinscala.testing._
 
-  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop =
-    forAll(Gen.unit(Monoid.intAddition))(m => {
-      m.op(2, 3) == m.op(3, 2)
-    })
-
   def monoidLaws2[A](m: Monoid[A], gen: Gen[A]): Prop =
   // Associativity
     forAll(for {
       x <- gen
       y <- gen
       z <- gen
-    } yield (x, y, z)){ p: (A, A, A) =>
-      m.op(p._1, m.op(p._2, p._3)) == m.op(m.op(p._1, p._2), p._3)
+    } yield (x, y, z)) { case (a, b, c) =>
+      m.op(a, m.op(b, c)) == m.op(m.op(a, b), c)
     } &&
       // Identity
       forAll(gen)((a: A) =>
@@ -100,26 +97,28 @@ object Monoid {
     ???
 
   sealed trait WC
+
   case class Stub(chars: String) extends WC
+
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] = 
+  def par[A](m: Monoid[A]): Monoid[Par[A]] =
     ???
 
-  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] = 
+  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
     ???
 
   val wcMonoid: Monoid[WC] = ???
 
   def count(s: String): Int = ???
 
-  def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
+  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     ???
 
-  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] =
+  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
     ???
 
-  def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] =
+  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
     ???
 
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
@@ -127,7 +126,6 @@ object Monoid {
 }
 
 trait Foldable[F[_]] {
-  import Monoid._
 
   def foldRight[A, B](as: F[A])(z: B)(f: (A, B) => B): B =
     ???
@@ -148,8 +146,10 @@ trait Foldable[F[_]] {
 object ListFoldable extends Foldable[List] {
   override def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B) =
     ???
+
   override def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B) =
     ???
+
   override def foldMap[A, B](as: List[A])(f: A => B)(mb: Monoid[B]): B =
     ???
 }
@@ -157,8 +157,10 @@ object ListFoldable extends Foldable[List] {
 object IndexedSeqFoldable extends Foldable[IndexedSeq] {
   override def foldRight[A, B](as: IndexedSeq[A])(z: B)(f: (A, B) => B) =
     ???
+
   override def foldLeft[A, B](as: IndexedSeq[A])(z: B)(f: (B, A) => B) =
     ???
+
   override def foldMap[A, B](as: IndexedSeq[A])(f: A => B)(mb: Monoid[B]): B =
     ???
 }
@@ -166,19 +168,24 @@ object IndexedSeqFoldable extends Foldable[IndexedSeq] {
 object StreamFoldable extends Foldable[Stream] {
   override def foldRight[A, B](as: Stream[A])(z: B)(f: (A, B) => B) =
     ???
+
   override def foldLeft[A, B](as: Stream[A])(z: B)(f: (B, A) => B) =
     ???
 }
 
 sealed trait Tree[+A]
+
 case class Leaf[A](value: A) extends Tree[A]
+
 case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
 
 object TreeFoldable extends Foldable[Tree] {
   override def foldMap[A, B](as: Tree[A])(f: A => B)(mb: Monoid[B]): B =
     ???
+
   override def foldLeft[A, B](as: Tree[A])(z: B)(f: (B, A) => B) =
     ???
+
   override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B) =
     ???
 }
@@ -186,8 +193,10 @@ object TreeFoldable extends Foldable[Tree] {
 object OptionFoldable extends Foldable[Option] {
   override def foldMap[A, B](as: Option[A])(f: A => B)(mb: Monoid[B]): B =
     ???
+
   override def foldLeft[A, B](as: Option[A])(z: B)(f: (B, A) => B) =
     ???
+
   override def foldRight[A, B](as: Option[A])(z: B)(f: (A, B) => B) =
     ???
 }
