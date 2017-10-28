@@ -17,8 +17,6 @@ trait Parsers[Parser[+ _]] {
 
   implicit def regex(r: Regex): Parser[String]
 
-  def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]]
-
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
   def char(c: Char): Parser[Char]

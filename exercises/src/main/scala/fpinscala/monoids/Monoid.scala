@@ -1,6 +1,6 @@
 package fpinscala.monoids
 
-import fpinscala.parallelism.Nonblocking._
+import fpinscala.parallelism.Nonblocking.Par._
 import fpinscala.testing.Prop.forAll
 
 import scala.language.higherKinds
@@ -76,22 +76,48 @@ object Monoid {
       forAll(gen)((a: A) =>
         m.op(a, m.zero) == a && m.op(m.zero, a) == a)
 
+  def flipMonoid[A](m:Monoid[A]): Monoid[A] = new Monoid[A] {
+    override def op(a1: A, a2: A): A = m.op(a2, a1)
+
+    override def zero: A = m.zero
+  }
+
   def trimMonoid(s: String): Monoid[String] = ???
 
   def concatenate[A](as: List[A], m: Monoid[A]): A =
     ???
 
   def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
-    ???
+    as.foldLeft(m.zero)((b, a) => m.op(b, f(a)))
 
   def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    ???
+    foldMap(as, endoMonoid[B])(f.curried)(z)
 
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    ???
+    foldMap(as, flipMonoid(endoMonoid[B]))(a => b => f(b,a))(z)
 
   def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    ???
+    if (as.length < 2)
+      foldMap(as.toList, m)(f)
+    else {
+      val (l, r) = as.splitAt(as.length / 2)
+      m.op(foldMapV(l, m)(f),foldMapV(r, m)(f))
+    }
+
+  import fpinscala.parallelism.Nonblocking._
+
+  def par[A](m: Monoid[A]): Monoid[Par[A]] = new Monoid[Par[A]] {
+    override def op(a1: Par[A], a2: Par[A]) = Par.map2(a1, a2)(m.op)
+
+    override def zero: Par[A] = Par.unit(m.zero)
+  }
+
+  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] = {
+    Par.parMap(v)(f).flatMap {
+      bSeq => foldMapV(bSeq, par(m))(b => Par.unit(b))
+    }
+  }
+
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     ???
@@ -102,15 +128,34 @@ object Monoid {
 
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] =
-    ???
+  // "lorem ipsum do" + "lor sit amet, "
+  // Part ("lorem", 1, "do") + Part("lor", 2, "")
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    override def op(a1: WC, a2: WC): WC = {
+      (a1, a2) match {
+        case (Part(l1, w1, r1), Part(l2, w2, r2)) => Part(l1, w1 + w2 + (if ((r1 + l2).isEmpty) 0 else 1), r2)
+        case (Part(l, w, r), Stub(c)) => Part(l, w, r + c)
+        case (Stub(c), Part(l, w, r)) => Part(c + l, w, r)
+        case (Stub(c1), Stub(c2)) => Stub(c1 + c2)
+      }
+    }
 
-  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
-    ???
+    override def zero: WC = Stub("")
+  }
 
-  val wcMonoid: Monoid[WC] = ???
+  def count(s: String): Int = {
+    def toWc(c: Char): WC =
+      if (c.isWhitespace) Part("", 0, "")
+      else Stub(c.toString)
 
-  def count(s: String): Int = ???
+    def unstub(s: String) = s.length min 1
+
+    val wc = foldMapV(s.toIndexedSeq, wcMonoid)(toWc)
+    wc match {
+      case Stub(c) => unstub(c)
+      case Part(l, w, r) => unstub(l) + w + unstub(r)
+    }
+  }
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     ???

@@ -171,8 +171,7 @@ object Par {
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
   class ParOps[A](p: Par[A]) {
-
-
+    def flatMap[B](f: A => Par[B]): Par[B] = Par.flatMap(p)(f)
   }
 }
 
