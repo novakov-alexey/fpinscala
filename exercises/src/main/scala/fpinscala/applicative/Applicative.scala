@@ -10,8 +10,19 @@ import language.higherKinds
 import language.implicitConversions
 
 trait Applicative[F[_]] extends Functor[F] {
+  self =>
 
-  def map2[A,B,C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] = ???
+  def map2[A,B,C](fa: F[A], fb: F[B])(f: (A, B) => C): F[C] =
+    apply(apply(unit(f.curried))(fa))(fb)
+
+  def map3[A,B,C,D](fa: F[A], fb: F[B], fc: F[C])
+                   (f: (A, B, C) => D): F[D] = {
+    apply(apply(apply(unit(f.curried))(fa))(fb))(fc)
+  }
+
+  def map4[A,B,C,D,E](fa: F[A], fb: F[B], fc: F[C],
+                      fd: F[D])(f: (A, B, C, D) => E): F[E] =
+    apply(apply(apply(apply(unit(f.curried))(fa))(fb))(fc))(fd)
 
   def apply[A,B](fab: F[A => B])(fa: F[A]): F[B] = ???
 
@@ -30,7 +41,11 @@ trait Applicative[F[_]] extends Functor[F] {
 
   def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
 
-  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = ???
+  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = new Applicative[({type f[x] = F[G[x]]})#f] {
+    override def unit[A](a: => A): F[G[A]] = self.unit(G.unit(a))
+
+    override def map2[A, B, C](fa: F[G[A]], fb: F[G[B]])(f: (A, B) => C): F[G[C]] = self.map2(fa, fb)(G.map2(_, _)(f))
+  }
 
   def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = ???
 }
@@ -50,7 +65,18 @@ trait Monad[F[_]] extends Applicative[F] {
 }
 
 object Monad {
-  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = ???
+  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] =
+    new Monad[({type f[x] = Either[E, x]})#f] {
+
+    override def unit[A](a: => A): Either[E, A] = Right(a)
+
+      override def flatMap[A, B]
+      (ma: Either[E, A])
+      (f: A => Either[E, B])
+      : Either[E, B] = {
+        ma.flatMap(f)
+      }
+    }
 
   def stateMonad[S] = new Monad[({type f[x] = State[S, x]})#f] {
     def unit[A](a: => A): State[S, A] = State(s => (a, s))
@@ -82,7 +108,18 @@ object Applicative {
       a zip b map f.tupled
   }
 
-  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = ???
+  def validationApplicative[E]
+  : Applicative[({type f[x] = Validation[E,x]})#f] = new Applicative[({type f[x] = Validation[E,x]})#f] {
+    override def unit[A](a: => A): Validation[E, A] = Success(a)
+
+    override def map2[A,B,C](fa: Validation[E, A ], fb: Validation[E, B])(f: (A,B) => C): Validation[E, C] = (fa, fb) match {
+      case (Success(a), Success(b)) => unit(f(a,b))
+      case (Failure(ae, aes), Failure(be, bes)) => Failure(ae, (aes :+ be) ++ bes)
+      case (a@Failure(_,_), _) => a
+      case (_, b@Failure(_,_)) => b
+
+     }
+  }
 
   type Const[A, B] = A
 
