@@ -1,8 +1,7 @@
 package fpinscala.iomonad
 
-import language.postfixOps
-import language.higherKinds
 import scala.io.StdIn.readLine
+import scala.language.{higherKinds, postfixOps}
 
 object IO0 {
                             /*
@@ -363,23 +362,42 @@ object IO3 {
   sealed trait Free[F[_],A] {
     def flatMap[B](f: A => Free[F,B]): Free[F,B] =
       FlatMap(this, f)
+
     def map[B](f: A => B): Free[F,B] =
       flatMap(f andThen (Return(_)))
   }
   case class Return[F[_],A](a: A) extends Free[F, A]
   case class Suspend[F[_],A](s: F[A]) extends Free[F, A]
-  case class FlatMap[F[_],A,B](s: Free[F, A],
-                               f: A => Free[F, B]) extends Free[F, B]
+  case class FlatMap[F[_],A,B](s: Free[F, A], f: A => Free[F, B]) extends Free[F, B]
 
   // Exercise 1: Implement the free monad
-  def freeMonad[F[_]]: Monad[({type f[a] = Free[F,a]})#f] = ???
+  def freeMonad[F[_]]: Monad[({type f[a] = Free[F,a]})#f] =
+    new Monad[({type f[a] = Free[F,a]})#f] {
+
+      override def flatMap[A, B](a: Free[F, A])(f: A => Free[F, B]): Free[F, B] = a.flatMap(f)
+
+      override def unit[A](a: => A): Free[F, A] = Return(a)
+  }
 
   // Exercise 2: Implement a specialized `Function0` interpreter.
-  // @annotation.tailrec
-  def runTrampoline[A](a: Free[Function0,A]): A = ???
+  @annotation.tailrec
+  def runTrampoline[A](fa: Free[Function0,A]): A = fa match {
+    case Return(a) => a
+    case Suspend(s) => s()
+    case FlatMap(s, f) => s match {
+      case Return(r) => runTrampoline(f(r))
+      case Suspend(r) => runTrampoline(f(r()))
+      case FlatMap(y, g) => runTrampoline(y flatMap (a => g(a) flatMap f))
+    }
+  }
 
   // Exercise 3: Implement a `Free` interpreter which works for any `Monad`
-  def run[F[_],A](a: Free[F,A])(implicit F: Monad[F]): F[A] = ???
+  def run[F[_],A](fa: Free[F,A])(implicit F: Monad[F]): F[A] = step(fa) match {
+    case Return(a) => F.unit(a)
+    case Suspend(s) => s
+    case FlatMap(Suspend(r), f) => F.flatMap(r)(a => run(f(a)))
+    case _ => sys.error("Impossible, since `step` eliminates these cases")
+  }
 
   // return either a `Suspend`, a `Return`, or a right-associated `FlatMap`
   // @annotation.tailrec
@@ -567,7 +585,6 @@ object IO3 {
    * which supports asynchronous reads.
    */
 
-  import java.nio._
   import java.nio.channels._
 
   def read(file: AsynchronousFileChannel,
