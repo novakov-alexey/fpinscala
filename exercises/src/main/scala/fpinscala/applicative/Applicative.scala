@@ -39,7 +39,26 @@ trait Applicative[F[_]] extends Functor[F] {
 
   def factor[A,B](fa: F[A], fb: F[B]): F[(A,B)] = ???
 
-  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
+  def product[G[_]](G: Applicative[G])
+  : Applicative[({type f[x] = (F[x], G[x])})#f] =
+
+    new Applicative[({type f[x] = (F[x], G[x])})#f] {
+
+    override def unit[A](a: => A): (F[A], G[A]) = {
+      (self.unit(a), G.unit(a))
+    }
+
+      override def map2[A, B, C]
+      (fa: (F[A], G[A]), fb: (F[B], G[B]))
+      (f: (A, B) => C)
+      : (F[C], G[C]) = {
+
+        val fc: F[C] = self.map2(fa._1, fb._1)(f)
+        val gc: G[C] = G.map2(fa._2, fb._2)(f)
+
+        (fc, gc)
+      }
+    }
 
   def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = new Applicative[({type f[x] = F[G[x]]})#f] {
     override def unit[A](a: => A): F[G[A]] = self.unit(G.unit(a))
@@ -47,7 +66,18 @@ trait Applicative[F[_]] extends Functor[F] {
     override def map2[A, B, C](fa: F[G[A]], fb: F[G[B]])(f: (A, B) => C): F[G[C]] = self.map2(fa, fb)(G.map2(_, _)(f))
   }
 
-  def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = ???
+  // 10.01.2018
+  def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = {
+//    ofa.foldLeft(Map.empty[K,V]){
+//      case(acc, (k,fv)) => acc += (k, fv)
+//    }
+
+    traverse(ofa.toList)((a: (K, F[V])) => a._1 -> map(a._2)(identity))
+
+    val list = ofa.toList
+    val value = sequence(list)
+    value // List[F[A]]
+  }
 }
 
 case class Tree[+A](head: A, tail: List[Tree[A]])
@@ -84,8 +114,12 @@ object Monad {
       st flatMap f
   }
 
-  def composeM[F[_],N[_]](implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
-    Monad[({type f[x] = F[N[x]]})#f] = ???
+  def composeM[F[_],N[_]]
+  (implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
+    Monad[({type f[x] = F[N[x]]})#f] = new Monad[({type f[x] = F[N[x]]})#f] {
+
+    override def unit[A](a: => A) = ???
+  }
 }
 
 sealed trait Validation[+E, +A]
