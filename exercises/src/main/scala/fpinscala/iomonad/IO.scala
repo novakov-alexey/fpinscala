@@ -479,8 +479,9 @@ object IO3 {
     def flatMap[A,B](a: Par[A])(f: A => Par[B]) = Par.fork { Par.flatMap(a)(f) }
   }
 
-  def runFree[F[_],G[_],A](free: Free[F,A])(t: F ~> G)(
-                           implicit G: Monad[G]): G[A] =
+  def runFree[F[_],G[_],A](free: Free[F,A])
+                          (t: F ~> G)
+                          (implicit G: Monad[G]): G[A] =
     step(free) match {
       case Return(a) => G.unit(a)
       case Suspend(r) => t(r)
@@ -508,9 +509,16 @@ object IO3 {
   // Exercise 4 (optional, hard): Implement `runConsole` using `runFree`,
   // without going through `Par`. Hint: define `translate` using `runFree`.
 
-  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = ???
+  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = {
+    type FreeG[A1] = Free[G,A1]
+    val t = new (F ~> FreeG) {
+      def apply[A1](a: F[A1]): Free[G,A1] = Suspend { fg(a) }
+    }
+    runFree(f)(t)(freeMonad[G])
+  }
 
-  def runConsole[A](a: Free[Console,A]): A = ???
+  def runConsole[A](a: Free[Console,A]): A =
+    runTrampoline(translate(a)(consoleToFunction0))
 
   /*
   There is nothing about `Free[Console,A]` that requires we interpret
