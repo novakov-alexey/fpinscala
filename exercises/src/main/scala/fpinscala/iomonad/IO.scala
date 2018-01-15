@@ -1,5 +1,7 @@
 package fpinscala.iomonad
 
+import java.nio.ByteBuffer
+
 import scala.io.StdIn.readLine
 import scala.language.{higherKinds, postfixOps}
 
@@ -597,7 +599,23 @@ object IO3 {
 
   def read(file: AsynchronousFileChannel,
            fromPosition: Long,
-           numBytes: Int): Par[Either[Throwable, Array[Byte]]] = ???
+           numBytes: Int): Par[Either[Throwable, Array[Byte]]] = {
+
+    Par.async[Either[Throwable,Array[Byte]]] { (cb: Either[Throwable,Array[Byte]] => Unit) =>
+      val buff = ByteBuffer.allocate(numBytes)
+
+      file.read(buff, fromPosition, (), new CompletionHandler[Integer, Unit] {
+        override def failed(exc: Throwable, attachment: Unit): Unit =
+          cb(Left(exc))
+
+        override def completed(bytesRead: Integer, attachment: Unit): Unit = {
+          val arr = new Array[Byte](bytesRead)
+          buff.slice.get(arr, 0, bytesRead)
+          cb(Right(arr))
+        }
+      })
+    }
+  }
 
   // Provides the syntax `Async { k => ... }` for asyncronous IO blocks.
   def Async[A](cb: (A => Unit) => Unit): IO[A] =
