@@ -1,13 +1,12 @@
 package fpinscala
 package applicative
 
-import monads.Functor
-import state._
-import State._
-import StateUtil._ // defined at bottom of this file
-import monoids._
-import language.higherKinds
-import language.implicitConversions
+import fpinscala.applicative.StateUtil._
+import fpinscala.monads.Functor
+import fpinscala.monoids._
+import fpinscala.state._
+
+import scala.language.{higherKinds, implicitConversions}
 
 trait Applicative[F[_]] extends Functor[F] {
   self =>
@@ -68,15 +67,10 @@ trait Applicative[F[_]] extends Functor[F] {
 
   // 10.01.2018
   def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = {
-//    ofa.foldLeft(Map.empty[K,V]){
-//      case(acc, (k,fv)) => acc += (k, fv)
-//    }
-
-    traverse(ofa.toList)((a: (K, F[V])) => a._1 -> map(a._2)(identity))
-
-    val list = ofa.toList
-    val value = sequence(list)
-    value // List[F[A]]
+    ofa.foldLeft(unit(Map.empty[K,V])){
+      case(facc, (k, fv)) =>
+        map2(facc, fv)((acc, v) => acc + (k -> v))
+    }
   }
 }
 
@@ -205,11 +199,28 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
 }
 
 object Traverse {
-  val listTraverse = ???
+  val listTraverse = new Traverse[List]() {
+    override def traverse[G[_], A, B](fa: List[A])(f: A => G[B])(implicit G: Applicative[G]): G[List[B]] =
+      fa.foldLeft(G.unit(List.empty[B])){(facc: G[List[B]], a: A) =>
+        G.map2(facc,f(a))((a: List[B], b: B) => a :+ b)
+      }
+  }
 
-  val optionTraverse = ???
+  val optionTraverse = new Traverse[Option]() {
+    override def traverse[G[_], A, B]
+    (fa: Option[A])(f: A => G[B])(implicit G: Applicative[G]): G[Option[B]] =
+      fa.foldLeft(G.unit(Option.empty[B]))((facc, a) =>
+        G.map2(facc, f(a))((a: Option[B], b: B) => a.orElse(Option(b)))
+      )
+  }
 
-  val treeTraverse = ???
+  val treeTraverse = new Traverse[Tree]() {
+    override def traverse[G[_], A, B]
+    (fa: Tree[A])(f: A => G[B])(implicit G: Applicative[G]): G[Tree[B]] =
+      fa match {
+        case Tree()
+      }
+  }
 }
 
 // The `get` and `set` functions on `State` are used above,
