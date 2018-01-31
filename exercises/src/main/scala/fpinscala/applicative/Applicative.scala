@@ -2,7 +2,7 @@ package fpinscala
 package applicative
 
 import fpinscala.applicative.StateUtil._
-import fpinscala.monads.Functor
+import fpinscala.monads.{Functor, Id}
 import fpinscala.monoids._
 import fpinscala.state._
 
@@ -159,12 +159,28 @@ object Applicative {
 }
 
 trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
-  def traverse[G[_]:Applicative,A,B](fa: F[A])(f: A => G[B]): G[F[B]] =
+  def traverse[G[_],A,B](fa: F[A])(f: A => G[B])
+                                    (implicit G: Applicative[G]): G[F[B]] =
     sequence(map(fa)(f))
-  def sequence[G[_]:Applicative,A](fma: F[G[A]]): G[F[A]] =
+
+  def sequence[G[_],A](fma: F[G[A]])
+                                  (implicit G: Applicative[G]): G[F[A]] =
     traverse(fma)(ma => ma)
 
-  def map[A,B](fa: F[A])(f: A => B): F[B] = ???
+  type Id[A] = A
+
+  def map[A, B](fa: F[A])(f: A => B): F[B] = {
+    implicit val idApp = new Applicative[Id] {
+      override def unit[A](a: => A): Id[A] =
+        a
+
+      override def map2[A, B, C](fa: Id[A], fb: Id[B])(f: (A, B) => C): Id[C] =
+        f(fa, fb)
+    }
+
+    traverse(fa)(x => idApp.unit(f(x)))
+  }
+
 
   import Applicative._
 
@@ -217,9 +233,10 @@ object Traverse {
   val treeTraverse = new Traverse[Tree]() {
     override def traverse[G[_], A, B]
     (fa: Tree[A])(f: A => G[B])(implicit G: Applicative[G]): G[Tree[B]] =
-      fa match {
-        case Tree()
-      }
+      G.map2(
+        f(fa.head),
+        listTraverse.traverse(fa.tail)(tree => traverse(tree)(f)))((b, list) => Tree(b, list)
+      )
   }
 }
 
