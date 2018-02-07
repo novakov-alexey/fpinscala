@@ -204,23 +204,40 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def zipWithIndex[A](fa: F[A]): F[(A, Int)] =
     mapAccum(fa, 0)((a, s) => ((a, s), s + 1))._1
 
-  def reverse[A](fa: F[A]): F[A] = ???
+  def reverse[A](fa: F[A]): F[A] = {
+    mapAccum(fa, toList(fa).reverse)((_, as) => (as.head, as.tail))._1
+  }
 
-  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B = ???
+  override def foldLeft[A,B](fa: F[A])(z: B)(f: (B, A) => B): B = {
+    mapAccum(fa, z)((a: A, acc: B) => ((), f(acc, a)))._2
+  }
 
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
-                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = ???
+                         (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
+//    (traverse(fa)(f), traverse(fa)(g))
+    (traverse(fa)(f), traverse(fa)(g))
+
+    traverse(fa)(a => (f(a), g(a)))
+
+    mapAccum(fa, (G.unit(()), H.unit(()))) { case (a, (ga: G[Unit], ha: H[Unit])) =>
+        g
+    }
+  }
 
   def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] = ???
 }
 
-object Traverse {
+object Traverse extends App {
+
   val listTraverse = new Traverse[List]() {
     override def traverse[G[_], A, B](fa: List[A])(f: A => G[B])(implicit G: Applicative[G]): G[List[B]] =
       fa.foldLeft(G.unit(List.empty[B])){(facc: G[List[B]], a: A) =>
         G.map2(facc,f(a))((a: List[B], b: B) => a :+ b)
       }
   }
+
+  val res = listTraverse.foldLeft(List(1,2,3))(0)(_ + _)
+  println("res = " + res)
 
   val optionTraverse = new Traverse[Option]() {
     override def traverse[G[_], A, B]
