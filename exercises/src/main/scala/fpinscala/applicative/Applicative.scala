@@ -77,7 +77,8 @@ trait Applicative[F[_]] extends Functor[F] {
 case class Tree[+A](head: A, tail: List[Tree[A]])
 
 trait Monad[F[_]] extends Applicative[F] {
-  def flatMap[A,B](ma: F[A])(f: A => F[B]): F[B] = join(map(ma)(f))
+  def flatMap[A,B](ma: F[A])(f: A => F[B]): F[B] =
+    join(map(ma)(f))
 
   def join[A](mma: F[F[A]]): F[A] = flatMap(mma)(ma => ma)
 
@@ -86,6 +87,9 @@ trait Monad[F[_]] extends Applicative[F] {
 
   override def apply[A,B](mf: F[A => B])(ma: F[A]): F[B] =
     flatMap(mf)(f => map(ma)(a => f(a)))
+
+  override def map[A,B](m: F[A])(f: A => B): F[B] =
+    flatMap(m)(a => unit(f(a)))
 }
 
 object Monad {
@@ -103,7 +107,9 @@ object Monad {
     }
 
   def stateMonad[S] = new Monad[({type f[x] = State[S, x]})#f] {
-    def unit[A](a: => A): State[S, A] = State(s => (a, s))
+    def unit[A](a: => A): State[S, A] =
+      State(s => (a, s))
+
     override def flatMap[A,B](st: State[S, A])(f: A => State[S, B]): State[S, B] =
       st flatMap f
   }
@@ -192,11 +198,11 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
     traverse[({type f[x] = State[S,x]})#f,A,B](fa)(f)(Monad.stateMonad)
 
   def mapAccum[S,A,B](fa: F[A], s: S)(f: (A, S) => (B, S)): (F[B], S) =
-    traverseS(fa)((a: A) => (for {
+    traverseS(fa)((a: A) => for {
       s1 <- get[S]
       (b, s2) = f(a, s1)
-      _  <- set(s2)
-    } yield b)).run(s)
+      _ <- set(s2)
+    } yield b).run(s)
 
   override def toList[A](fa: F[A]): List[A] =
     mapAccum(fa, List[A]())((a, s) => ((), a :: s))._2.reverse
@@ -214,10 +220,8 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
 
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
                          (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
-//    (traverse(fa)(f), traverse(fa)(g))
-    (traverse(fa)(f), traverse(fa)(g))
 
-    traverse(fa)(a => (f(a), g(a)))
+    //(traverse(fa)(f), traverse(fa)(g))
 
     mapAccum(fa, (G.unit(()), H.unit(()))) { case (a, (ga: G[Unit], ha: H[Unit])) =>
         g
