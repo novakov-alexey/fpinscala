@@ -1,6 +1,9 @@
 package fpinscala.streamingio
 
-import fpinscala.iomonad.{IO,Monad,Free,unsafePerformIO}
+import java.io.{File, FileOutputStream, PrintWriter}
+
+import fpinscala.iomonad.{Free, IO, Monad, unsafePerformIO}
+
 import language.implicitConversions
 import language.higherKinds
 import language.postfixOps
@@ -444,6 +447,9 @@ object SimpleStreamTransducers {
       finally s.close
     }
 
+
+    processFile(new File("test.txt"), count |> exists(_ > 40000), false)(_ || _)
+
     /*
      * Exercise 9: Write a program that reads degrees fahrenheit as `Double` values from a file,
      * converts each temperature to celsius, and writes results to another file.
@@ -451,6 +457,19 @@ object SimpleStreamTransducers {
 
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
+
+    def convertToCelsius(f: File, o: File): Unit = {
+      val out = new PrintWriter(f)
+
+      try {
+        val p: Process[String, String] = await(i => Emit(toCelsius(i.toDouble).toString))
+        processFile(f, p, out)((o, l) => {
+          o.print(l)
+          o
+        })
+      } finally out.close()
+
+    }
   }
 }
 
@@ -562,7 +581,17 @@ object GeneralizedStreamTransducers {
      * below, this is not tail recursive and responsibility for stack safety
      * is placed on the `Monad` instance.
      */
-    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = ???
+    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = {
+      def go(cur: Process[F,O], acc: IndexedSeq[O]): F[IndexedSeq[O]] =
+        cur match {
+          case Emit(h,t) => go(t, acc :+ h)
+          case Halt(End) => F.unit(acc)
+          case Halt(err) => F.fail(err)
+          case Await(req, recv) =>
+            F.flatMap(F.attempt(req))(a => go(Try(recv(a)), acc))
+        }
+      go(this, IndexedSeq())
+    }
 
     /*
      * We define `Process1` as a type alias - see the companion object
