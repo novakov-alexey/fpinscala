@@ -118,7 +118,13 @@ object Monad {
   (implicit F: Monad[F], N: Monad[N], T: Traverse[N]):
     Monad[({type f[x] = F[N[x]]})#f] = new Monad[({type f[x] = F[N[x]]})#f] {
 
-    override def unit[A](a: => A) = ???
+    override def unit[A](a: => A): F[N[A]] = F.unit(N.unit(a))
+
+    override def flatMap[A, B](ma: F[N[A]])(f: A => F[N[B]]): F[N[B]] = {
+      F.flatMap(ma){ (x: N[A]) =>
+        F.map(T.traverse(x)(a => f(a)))(N.join)
+      }
+    }
   }
 }
 
@@ -221,14 +227,19 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
   def fuse[G[_],H[_],A,B](fa: F[A])(f: A => G[B], g: A => H[B])
                          (implicit G: Applicative[G], H: Applicative[H]): (G[F[B]], H[F[B]]) = {
 
-    //(traverse(fa)(f), traverse(fa)(g))
-
-    mapAccum(fa, (G.unit(()), H.unit(()))) { case (a, (ga: G[Unit], ha: H[Unit])) =>
-        g
-    }
+    val GHprod = G.product(H)
+    traverse[({type f[x] = (G[x], H[x])})#f, A, B](fa)(a => (f(a), g(a)))(GHprod)
   }
 
-  def compose[G[_]](implicit G: Traverse[G]): Traverse[({type f[x] = F[G[x]]})#f] = ???
+  def compose[G[_]](implicit G: Traverse[G])
+  : Traverse[({type f[x] = F[G[x]]})#f] = {
+    val self = this
+    new Traverse[({type f[x] = F[G[x]]})#f] {
+      override def traverse[AG[_], A, B](fa: F[G[A]])(f: A => AG[B])(implicit AG: Applicative[AG]): AG[F[G[B]]] = {
+        self.traverse(fa)(x => G.traverse(x)(f))
+      }
+    }
+  }
 }
 
 object Traverse extends App {
@@ -241,7 +252,25 @@ object Traverse extends App {
   }
 
   val res = listTraverse.foldLeft(List(1,2,3))(0)(_ + _)
-  println("res = " + res)
+//  println("res = " + res)
+
+  implicit  val appOption = new Applicative[Option] {
+    override def unit[A](a: => A): Option[A] = Some(a)
+
+    override def map2[A, B, C]
+    (fa: Option[A], fb: Option[B])
+    (f: (A, B) => C): Option[C] =
+      fa.flatMap(a => fb.map(b => f(a,b)))
+  }
+
+  val res2 = listTraverse.fuse[Option,Option, Int, Int](
+    List(1,2,3)
+  )(
+    a => Option(a),
+    b => if ((b % 2) == 0) Some(b) else None
+  )
+
+//  println("res2 = " + res2)
 
   val optionTraverse = new Traverse[Option]() {
     override def traverse[G[_], A, B]
@@ -250,6 +279,15 @@ object Traverse extends App {
         G.map2(facc, f(a))((a: Option[B], b: B) => a.orElse(Option(b)))
       )
   }
+
+  val res3 = listTraverse.compose(optionTraverse)
+    .traverse(List(Some(1), None, Some(2)))(i => Option(i).filter(_ % 2 == 0))
+
+  val res4 = optionTraverse.compose(listTraverse)
+    .traverse(Some(List(1,2,3)))(i => Option(i))
+
+  println(s"res3 = $res3")
+  println(s"res4 = $res4")
 
   val treeTraverse = new Traverse[Tree]() {
     override def traverse[G[_], A, B]
