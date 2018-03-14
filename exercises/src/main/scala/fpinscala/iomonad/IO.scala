@@ -530,9 +530,22 @@ object IO3 {
   // Exercise 4 (optional, hard): Implement `runConsole` using `runFree`,
   // without going through `Par`. Hint: define `translate` using `runFree`.
 
-  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = ???
+  def translate[F[_],G[_],A](f: Free[F,A])(fg: F ~> G): Free[G,A] = {
+      type FreeG[X] = Free[G, X]
 
-  def runConsole[A](a: Free[Console,A]): A = ???
+      val fToFreeG =
+        new (F ~> FreeG) {
+          def apply[B](f: F[B]): FreeG[B] = {
+            Suspend(fg.apply(f))
+          }
+        }
+
+      runFree(f)(fToFreeG)(freeMonad)
+    }
+
+    def runConsole[A](a: Free[Console,A]): A = {
+      runTrampoline(translate(a)(consoleToFunction0))
+    }
 
   /*
   There is nothing about `Free[Console,A]` that requires we interpret
