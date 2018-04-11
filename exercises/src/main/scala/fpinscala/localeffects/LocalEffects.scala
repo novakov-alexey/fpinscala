@@ -98,7 +98,11 @@ sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) {
   // Turn the array into an immutable list
   def freeze: ST[S,List[A]] = ST(value.toList)
 
-  def fill(xs: Map[Int,A]): ST[S,Unit] = ???
+  def fill(xs: Map[Int,A]): ST[S,Unit] = {
+    xs.foldLeft(ST[S, Unit]()){
+      case (acc, (k, v)) => acc.flatMap( a => write(k, v))
+    }
+  }
 
   def swap(i: Int, j: Int): ST[S,Unit] = for {
     x <- read(i)
@@ -122,11 +126,62 @@ object STArray {
 }
 
 object Immutable {
+
+  def main(args: Array[String]): Unit = {
+    println(quicksort(List(12451, 214, 12, 100)))
+  }
+
   def noop[S] = ST[S,Unit](())
 
-  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = ???
+  /*
+  val pivotVal = arr(pivot)
+swap(pivot, r)
+var j = n
+for (i <- n until r) if (arr(i) < pivotVal) {
+   swap(i, j)
+   j += 1
+}
+swap(j, r)
+j
+   */
+  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = {
+    for {
+      pivotVal <- a.read(pivot)
+      _ <- a.swap(pivot, r)
+      j <- STRef(l)
+      _ <- {
 
-  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = ???
+        (l until r).foldLeft(noop[S]) { (agg, i) =>
+          a.read(i).flatMap(ai => if (ai < pivotVal) for {
+            _ <- agg
+            rj <- j.read
+            _ <- a.swap(i, rj)
+            _ <- j.write(rj + 1)
+          } yield () else agg)
+        }
+      }
+      rj <- j.read
+      _ <- a.swap(rj, r)
+    } yield rj
+  }
+
+  /*
+  def qs(l: Int, r: Int): Unit = if (l < r) {
+      val pi = partition(l, r, l + (r - l) / 2)
+      qs(l, pi - 1)
+      qs(pi + 1, r)
+    }
+   */
+  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = {
+    if (l < r) {
+      for {
+        pi <- partition(a, l, r, l + (r - l) / 2)
+        _ <- qs(a, l, pi - 1)
+        _ <- qs(a, pi + 1, r)
+      } yield ()
+    } else ST[S, Unit]()
+
+  }
 
   def quicksort(xs: List[Int]): List[Int] =
     if (xs.isEmpty) xs else ST.runST(new RunnableST[List[Int]] {
@@ -138,6 +193,7 @@ object Immutable {
       } yield sorted
   })
 }
+
 
 import scala.collection.mutable.HashMap
 
