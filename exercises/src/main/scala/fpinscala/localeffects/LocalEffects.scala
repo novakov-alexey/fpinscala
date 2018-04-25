@@ -2,6 +2,8 @@ package fpinscala.localeffects
 
 import fpinscala.monads._
 
+import scala.collection.mutable._
+
 object Mutable {
   def quicksort(xs: List[Int]): List[Int] = if (xs.isEmpty) xs else {
     val arr = xs.toArray
@@ -78,6 +80,22 @@ object STRef {
 trait RunnableST[A] {
   def apply[S]: ST[S,A]
 }
+
+sealed abstract class STMap[S, K, V] {
+  protected def value: HashMap[K, V]
+
+  def size: ST[S, Int] = ST(value.size)
+
+  def get(key: K): ST[S, V] = ST[S, V](value(key))
+
+  def set(key: K, v: V): ST[S, Unit] = new ST[S, Unit] {
+    override protected def run(s: S): (Unit, S) = {
+      value.put(key, v)
+      ((), s)
+    }
+  }
+}
+
 
 // Scala requires an implicit Manifest for constructing arrays.
 sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) {
