@@ -1,9 +1,13 @@
 package fpinscala.streamingio
 
-import fpinscala.iomonad.{IO,Monad,Free,unsafePerformIO}
+import java.io.{File, PrintWriter}
+
+import fpinscala.iomonad.{Free, IO, IO3, Monad, unsafePerformIO}
+
 import language.implicitConversions
 import language.higherKinds
 import language.postfixOps
+import scala.io.Source
 
 object ImperativeAndLazyIO {
 
@@ -140,9 +144,9 @@ object SimpleStreamTransducers {
       case Halt() => Halt()
       case Emit(h, t) => emit(h, this |> p2)
       case Await(recv) => this match {
-        case Halt() => ???
-        case Emit(h1, t1) => ???
-        case Await(recv1) => ???
+        case Halt() => Halt() |> recv(None)
+        case Emit(h1, t1) =>  t1 |> recv(Some(h1))
+        case Await(recv1) => Await((o: Option[I]) => recv1(o) |> p2)
       }
     }
 
@@ -208,7 +212,35 @@ object SimpleStreamTransducers {
     /*
      * Exercise 6: Implement `zipWithIndex`.
      */
-    def zipWithIndex: Process[I,(O,Int)] = ???
+    def zipWithIndex: Process[I,(O,Int)] = {
+      zip(count.map(_ - 1))
+    }
+
+    def zip[O2](p2: Process[I, O2]): Process[I,(O, O2)] = {
+      this match {
+        case Halt() => Halt()
+        case Emit(h, t) => p2 match {
+          case Halt() => Halt()
+          case Emit(h2, t2) => emit((h, h2), t zip t2)
+          case Await(recv2) => Await(recv2.andThen(x => this.zip(x)))
+        }
+        case Await(recv) => p2 match {
+          case Halt() => Halt()
+          case _ => Await((oa: Option[I]) => recv(oa).zip(feed(oa)(p2)))
+        }
+      }
+    }
+
+    def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
+      p match {
+        case Halt() => p
+        case Emit(h,t) => Emit(h, feed(oa)(t))
+        case Await(recv) => recv(oa)
+      }
+
+    // def sum2: Process[Double,Double] = {
+    //      loop(0.0)((x, acc) => (acc + x, acc + x))
+    //    }
 
     /* Add `p` to the fallback branch of this process */
     def orElse(p: Process[I,O]): Process[I,O] = this match {
@@ -355,6 +387,11 @@ object SimpleStreamTransducers {
       meanAcc(0, 0)
     }
 
+    def mean2: Process[Double, Double] = {
+      val x: Process[Double, (Double, Int)] = sum.zip(count2)
+      x.map {case (sum, count) => sum / count}
+    }
+
     def loop[S,I,O](z: S)(f: (I,S) => (O,S)): Process[I,O] =
       await((i: I) => f(i,z) match {
         case (o,s2) => emit(o, loop(s2)(f))
@@ -395,7 +432,9 @@ object SimpleStreamTransducers {
      * We choose to emit all intermediate values, and not halt.
      * See `existsResult` below for a trimmed version.
      */
-    def exists[I](f: I => Boolean): Process[I,Boolean] = ???
+    def exists[I](f: I => Boolean): Process[I,Boolean] = {
+      loop(false)((x: I, acc: Boolean) => (f(x) || acc, f(x) || acc)) // (O, S)
+    }
 
     /* Awaits then emits a single value, then halts. */
     def echo[I]: Process[I,I] = await(i => emit(i))
@@ -408,7 +447,7 @@ object SimpleStreamTransducers {
 
     def processFile[A,B](f: java.io.File,
                          p: Process[String, A],
-                         z: B)(g: (B, A) => B): IO[B] = IO {
+                         z: B)(g: (B, A) => B): B = { // IO
       @annotation.tailrec
       def go(ss: Iterator[String], cur: Process[String, A], acc: B): B =
         cur match {
@@ -431,6 +470,22 @@ object SimpleStreamTransducers {
 
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
+
+    def degreesToFile(f: File): Unit = {
+      val p: Process[String, Double] = filter[String](line => line.nonEmpty && !line.startsWith("#"))
+        .map(_.toDouble)
+        .map(toCelsius)
+
+      val pw = new PrintWriter(new File("degreesResult.txt"))
+
+      processFile(f, p, ())((a,b) => pw.write(b.toString))
+//      import fpinscala.parallelism.Nonblocking._
+//      import fpinscala._
+//      import fpinscala.iomonad._
+
+//      IO3.run(r)
+      pw.close()
+    }
   }
 }
 
@@ -1055,6 +1110,8 @@ object GeneralizedStreamTransducers {
 object TestApp extends App {
   import SimpleStreamTransducers.Process._
   val p = take[Int](2)
+  val pS = take[String](2)
+  val p3 = take[Int](10)
 //  println(p(Stream(1,2,3)).toList)
 
   val pdrop = drop[Int](2)
@@ -1068,7 +1125,22 @@ object TestApp extends App {
 
 //  println(count(Stream("1", "2", "13", "4", "5")).toList)
 
-  println(count3(Stream(10, 20, 30, 40)).toList)
+//  println(count3(Stream(10, 20, 30, 40)).toList)
+
+  //println(pS(Stream("a", "b", "c")).toList)
+
+  val pExists = exists[Int](_ % 2 == 0)
+//  println(pExists(Stream(1, 2, 3)).toList)
+
+  degreesToFile(new File("/Users/an/dev/git/fpinscala/degrees.txt"))
+
+//  Source.
+
+
+//  println(p.zip(p3)(Stream(2, 3, 4)).toList)
+//  println(mean2(Stream(2, 3, 4)).toList)
+
+
 
 }
 
