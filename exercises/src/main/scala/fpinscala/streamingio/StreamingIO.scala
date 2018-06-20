@@ -597,7 +597,18 @@ object GeneralizedStreamTransducers {
      * below, this is not tail recursive and responsibility for stack safety
      * is placed on the `Monad` instance.
      */
-    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = ???
+    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] =  {
+      def go(cur: Process[F,O], acc: IndexedSeq[O]): F[IndexedSeq[O]] =
+        cur match {
+          case Emit(h,t) => go(t, acc :+ h)
+          case Halt(End) => F.unit(acc)
+          case Halt(err) => F.fail(err)
+          case Await(req,recv) =>
+            val next = F.map(F.attempt(req))(recv)
+            F.flatMap(next)(a => go(Try(a), acc))
+        }
+        go(this, IndexedSeq())
+    }
 
     /*
      * We define `Process1` as a type alias - see the companion object
@@ -838,10 +849,20 @@ object GeneralizedStreamTransducers {
         { src => eval_ { IO(src.close) } }
 
     /* Exercise 11: Implement `eval`, `eval_`, and use these to implement `lines`. */
-    def eval[F[_],A](a: F[A]): Process[F,A] = ???
+    def eval[F[_],A](a: F[A]): Process[F,A] = {
+      await[F, A, A](a){
+        case Left(x) => Halt(x)
+        case Right(y) => emit(y, Halt(End))
+      }
+    }
 
     /* Evaluate the action purely for its effects. */
-    def eval_[F[_],A,B](a: F[A]): Process[F,B] = ???
+    def eval_[F[_],A,B](a: F[A]): Process[F,B] = {
+      await[F, A, B](a){
+        case Left(x) => Halt(x)
+        case Right(y) => eval_(a)
+      }
+    }
 
     /* Helper function with better type inference. */
     def evalIO[A](a: IO[A]): Process[IO,A] =
